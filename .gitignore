@@ -34,6 +34,3 @@ nosetests.xml
 .mr.developer.cfg
 .project
 .pydevproject
-
-# Don't want to publish API keys publicly
-keys.py
