@@ -11,7 +11,7 @@ class MyStreamer(TwythonStreamer):
 
 	def on_success(self, data):
 		self.total += 1
-		# print data
+		print data
 		# raise Exception()
 		if self.total % 100 == 0:
 			print self.total
@@ -22,7 +22,8 @@ class MyStreamer(TwythonStreamer):
 		#     print data
 
 	def on_error(self, status_code, data):
-		print status_code
+		print 'Error:', status_code
+		print data
 
 		# Want to stop trying to get data because of the error?
 		# Uncomment the next line!
