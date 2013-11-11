@@ -1,8 +1,10 @@
 from twython import Twython, TwythonStreamer
 import time
 import sys
+import database
 
-from keys import CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET
+from credentials import CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET
+
 
 class MyStreamer(TwythonStreamer):
 	def reset_total(self):
@@ -29,6 +31,8 @@ class MyStreamer(TwythonStreamer):
 		# Uncomment the next line!
 		# self.disconnect()
 
-stream = MyStreamer(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-stream.reset_total()
-stream.statuses.sample()
+
+if __name__ == '__main__':
+	stream = MyStreamer(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
+	stream.reset_total()
+	stream.statuses.sample()
