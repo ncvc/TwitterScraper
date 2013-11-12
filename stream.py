@@ -12,7 +12,7 @@ from credentials import CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKE
 # Make a global logging object.
 logit = logging.getLogger("logit")
 logit.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(levelname)s %(asctime)s %(funcName)s %(lineno)d %(message)s")
+formatter = logging.Formatter("%(levelname)s %(asctime)s %(funcName)s:%(lineno)d - %(message)s")
 
 # Stream handler
 handler = logging.StreamHandler()

@@ -5,7 +5,7 @@ from peewee import MySQLDatabase, Field, Model, CharField, DecimalField, DateTim
 from credentials import MYSQL_USER, MYSQL_PASS, MYSQL_HOST
 
 
-DB_NAME = 'twitter_scrape'
+DB_NAME = 'twitter'
 FILTER_LEVEL = {None: None, 'none': 0, 'low': 1, 'medium': 2, 'high': 3}
 
 
@@ -45,6 +45,7 @@ class Tweet(BaseModel):
 class DB:
 	def connect(self):
 		database.connect()
+		database.execute_sql('SET NAMES utf8mb4;')  # Necessary for some emojis
 
 	def close(self):
 		database.close()
