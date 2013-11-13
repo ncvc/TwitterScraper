@@ -1,4 +1,5 @@
 import time
+from HTMLParser import HTMLParser
 
 from peewee import MySQLDatabase, Field, Model, CharField, DecimalField, DateTimeField, IntegerField, BigIntegerField
 
@@ -8,6 +9,8 @@ from credentials import MYSQL_USER, MYSQL_PASS, MYSQL_HOST
 DB_NAME = 'twitter'
 FILTER_LEVEL = {None: None, 'none': 0, 'low': 1, 'medium': 2, 'high': 3}
 
+
+html_parser = HTMLParser()
 
 MySQLDatabase.register_fields({'TINYINT': 'TINYINT'})
 
@@ -54,12 +57,30 @@ class DB:
 	def create_tables(self):
 		Tweet.create_table()
 
+	# Adds a Queue of tweets to the db (more efficient than calling add_tweet repeatedly)
+	def add_tweets(self, tweets, logger):
+		with database.transaction():
+			logger.info('init transaction')
+			while not tweets.empty():
+				logger.info('tweet!')
+				tweet = tweets.get()
+				try:
+					self.add_tweet(tweet)
+				except:
+					logger.exception('db add_tweet exception %s' % str(tweet))
+			logger.info('end transaction')
+
+
 	# Adds the tweet data to the db
 	def add_tweet(self, tweetData):
 		tweet = Tweet()
 
 		# Populate the tweet. Use the get method to ensure no KeyErrors are raised
-		tweet.text = tweetData.get('text')
+		text = tweetData.get('text')
+		if text == None:
+			tweet.text = None
+		else:
+			tweet.text = html_parser.unescape(text)
 
 		coords = tweetData.get('coordinates')
 		if coords == None or coords == 'None':

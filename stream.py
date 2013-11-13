@@ -12,7 +12,7 @@ from credentials import CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKE
 # Make a global logging object.
 logit = logging.getLogger("logit")
 logit.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(levelname)s %(asctime)s %(funcName)s:%(lineno)d - %(message)s")
+formatter = logging.Formatter("%(levelname)s %(asctime)s %(threadName)s:%(funcName)s:%(lineno)d - %(message)s")
 
 # Stream handler
 handler = logging.StreamHandler()
@@ -27,7 +27,8 @@ logit.addHandler(fileHandler)
 
 
 class MyStreamer(TwythonStreamer):
-	def initialize(self, queue):
+	def __init__(self, queue, *args, **kwargs):
+		super(MyStreamer, self).__init__(*args, **kwargs)
 		self.last_time = time.clock()
 		self.total = 0
 		self.queue = queue
@@ -35,12 +36,12 @@ class MyStreamer(TwythonStreamer):
 
 	def on_success(self, data):
 		if data != None:
-			self.queue.put(data, block=False)
+			self.queue.put(data)
 		else:
 			self.logit.warn('Streamer: data == None. Wat.')
 
 		self.total += 1
-		if self.total % 100 == 0:
+		if self.total % 1000 == 0:
 			self.logit.info('Total Tweets: %d, elapsed time: %d, queue size: %d' % (self.total, time.clock() - self.last_time, self.queue.qsize()))
 			self.last_time = time.clock()
 
@@ -51,10 +52,9 @@ class MyStreamer(TwythonStreamer):
 # Thread that handles stream reading
 class StreamThread(Thread):
 	def __init__(self, queue):
-		Thread.__init__(self)
+		Thread.__init__(self, name='Thread-Stream')
 		self.queue = queue
-		self.stream = MyStreamer(CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
-		self.stream.initialize(queue)
+		self.stream = MyStreamer(queue, CONSUMER_KEY, CONSUMER_SECRET, ACCESS_TOKEN, ACCESS_TOKEN_SECRET)
 
 	def disconnect(self):
 		self.stream.disconnect()
@@ -66,13 +66,12 @@ class StreamThread(Thread):
 # Thread that handles DB writes
 class DBThread(Thread):
 	def __init__(self, queue):
-		Thread.__init__(self)
+		Thread.__init__(self, name='Thread-DB')
 		self.queue = queue
 		self.db = DB()
 		self.logit = logging.getLogger("logit")
-
-	def closeDB(self):
-		self.db.close()
+		self.to_commit = Queue()
+		self.commit_size = 1
 
 	def run(self):
 		self.db.connect()
@@ -81,6 +80,7 @@ class DBThread(Thread):
 			tweet = self.queue.get()
 
 			if tweet == None:
+				self.logit.info('Terminal sentinel encountered')
 				self.queue.task_done()
 				break
 
@@ -103,51 +103,72 @@ class DBThread(Thread):
 				try:
 					self.db.add_tweet(tweet)
 				except:
-					self.logit.exception('db add_tweet exception')
-					self.logit.debug(tweet)
+					self.logit.exception('db add_tweet exception %s' % str(tweet))
+
+				# TODO: Get multi-queries working, so we don't need a super low-latency connection to the database
+				# self.to_commit.put(tweet)
+
+				# Commit self.commit_size tweets at once
+				# if self.to_commit.qsize() % 100 == 0:
+				# 	self.logit.info('to_commit size: %d' % self.to_commit.qsize())
+
+				# if self.to_commit.qsize() >= self.commit_size:
+				# 	self.logit.info('start committing')
+				# 	self.db.add_tweets(self.to_commit, self.logit)
+				# 	self.logit.info('end committing')
 
 			self.queue.task_done()
 
+		self.logit.info('Closing db connection')
+		self.db.close()
 
-def joinWithCtrlC(thread):
-	while thread.isAlive():
-		thread.join(1000)
+
+# Thread used to quit gracefully
+class KeyThread(Thread):
+	def __init__(self):
+		Thread.__init__(self, name='Thread-Keystroke')
+
+	def run(self):
+		raw_input('Press enter to end\n')
 
 
 # Start the Streaming and DB threads
 def startThreads():
 	queue = Queue()
 
+	# Create threads
 	streamingThread = StreamThread(queue)
 	dbThread = DBThread(queue)
+	keyThread = KeyThread()
 
 	streamingThread.daemon = True
 	dbThread.daemon = True
+	keyThread.daemon = True
 
 	logit.info('Starting threads')
 	streamingThread.start()
 	dbThread.start()
+	keyThread.start()
 
-	try:
-		joinWithCtrlC(streamingThread)
-		logit.info('Streaming Thread exited')
+	# Wait until user presses ENTER
+	keyThread.join()
+	logit.info('Shut it down')
 
-		queue.put(None)  # Put the "terminate" sentinel on the queue
+	# Shutdown streaming thread
+	streamingThread.disconnect()
+	streamingThread.join()
 
-		joinWithCtrlC(dbThread)
-		logit.info('DB Thread exited')
-	except KeyboardInterrupt:
-		logit.info('Ctrl-c detected, shut it down')
+	logit.info('Streaming thread stopped, %d items left on the queue' % queue.qsize())
 
-		streamingThread.disconnect()
+	# Wait for queue to empty
+	queue.put(None)  # Put the "terminate" sentinel on the queue
+	queue.join()     # Wait until all items on the queue are processed
 
-		logit.info('%d items left on the queue' % queue.qsize())
 
-		queue.put(None)
-		queue.join()
-
-		logit.info('Finished the queue, closing db connection')
-		dbThread.closeDB()
+	logit.info('Streaming queue emptied, waiting for db shutdown')
+	dbThread.join()
+	
+	logit.info('Done!')
 
 
 if __name__ == '__main__':
